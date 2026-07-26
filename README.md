@@ -128,7 +128,7 @@ herdr-diff-review.nvim/
 ├── hooks/
 │   └── claude-diff-review.sh    PreToolUseフック（メインロジック）
 ├── lua/
-│   └── diff-review/
+│   └── herdr-diff-review/
 │       └── init.lua             Neovimプラグイン（diff表示 + コマンド）
 └── scripts/
     └── start-nvim.sh            常駐Neovim起動スクリプト
