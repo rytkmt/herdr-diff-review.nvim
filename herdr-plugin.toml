@@ -1,0 +1,6 @@
+id = "diff-review"
+name = "Diff Review"
+version = "0.1.0"
+min_herdr_version = "0.7.4"
+description = "Review AI agent file changes in nvim diff mode before applying"
+platforms = ["linux"]
