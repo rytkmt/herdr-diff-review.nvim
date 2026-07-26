@@ -1,5 +1,9 @@
 local M = {}
 
+local config = {
+  keymaps = {},
+}
+
 local state = {
   active = false,
   result_file = nil,
@@ -28,6 +32,7 @@ function M.open_diff(original, modified, result_file, file_path)
   vim.bo[state.modified_buf].bufhidden = "wipe"
 
   M._register_commands()
+  M._set_keymaps()
 end
 
 function M._write_result(decision)
@@ -73,6 +78,22 @@ function M._unregister_commands()
   pcall(vim.api.nvim_del_user_command, "HerdrDiffReviewDeny")
 end
 
-function M.setup(opts) end
+function M._set_keymaps()
+  local bufs = { state.original_buf, state.modified_buf }
+  for _, buf in ipairs(bufs) do
+    if buf and vim.api.nvim_buf_is_valid(buf) then
+      if config.keymaps.accept then
+        vim.keymap.set("n", config.keymaps.accept, "<cmd>HerdrDiffReviewAccept<cr>", { buffer = buf })
+      end
+      if config.keymaps.deny then
+        vim.keymap.set("n", config.keymaps.deny, "<cmd>HerdrDiffReviewDeny<cr>", { buffer = buf })
+      end
+    end
+  end
+end
+
+function M.setup(opts)
+  config = vim.tbl_deep_extend("force", config, opts or {})
+end
 
 return M

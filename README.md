@@ -87,11 +87,19 @@ diffが表示されたら:
 | `:HerdrDiffReviewAccept` | 変更を承認 |
 | `:HerdrDiffReviewDeny` | 変更を拒否 |
 
-これらのコマンドはdiff確認中のみ有効。キーマップは自由に設定可能:
+これらのコマンドはdiff確認中のみ有効。キーマップはsetupで設定可能（diff表示中のバッファにのみ適用される）:
 
 ```lua
-vim.keymap.set("n", "<leader>da", "<cmd>HerdrDiffReviewAccept<cr>")
-vim.keymap.set("n", "<leader>dd", "<cmd>HerdrDiffReviewDeny<cr>")
+{
+  "rytkmt/herdr-diff-review.nvim",
+  lazy = false,
+  opts = {
+    keymaps = {
+      accept = "<leader>da",
+      deny = "<leader>dd",
+    },
+  },
+}
 ```
 
 ## 設定
