@@ -103,7 +103,7 @@ SOCK_PATH="/tmp/herdr-diff-review-${PANE_ID//:/--}.sock"
 CURRENT_TAB_ID=$(herdr pane current 2>/dev/null | jq -r '.result.pane.tab_id // empty')
 
 nvim_alive() {
-  nvim --server "$SOCK_PATH" --remote-expr 'luaeval("pcall(require, \"diff-review\")")' 2>/dev/null | grep -q "true"
+  nvim --server "$SOCK_PATH" --remote-expr 'luaeval("pcall(require, \"herdr-diff-review\")")' 2>/dev/null | grep -q "true"
 }
 
 # state.jsonからdiffタブ情報取得（flock排他制御）
@@ -163,7 +163,7 @@ RESULT_ESC=$(escape_lua_str "$RESULT_FILE")
 FPATH_ESC=$(escape_lua_str "$FILE_PATH")
 
 nvim --server "$SOCK_PATH" --remote-expr \
-  "luaeval(\"require('diff-review').open_diff('${ORIG_ESC}', '${MOD_ESC}', '${RESULT_ESC}', '${FPATH_ESC}')\")" \
+  "luaeval(\"require('herdr-diff-review').open_diff('${ORIG_ESC}', '${MOD_ESC}', '${RESULT_ESC}', '${FPATH_ESC}')\")" \
   >/dev/null 2>&1
 
 # diffタブにフォーカス
