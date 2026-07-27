@@ -193,15 +193,26 @@ while [ ! -f "$RESULT_FILE" ]; do
   fi
 done
 
-RESULT=$(cat "$RESULT_FILE")
+DECISION=$(head -n 1 "$RESULT_FILE")
+MESSAGE=$(tail -n +2 "$RESULT_FILE")
 
 # 元のタブに戻す（失敗してもresult出力をブロックしない）
 herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
 
 # --- 結果出力 ---
 
-if [ "$RESULT" = "accept" ]; then
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
+if [ "$DECISION" = "accept" ]; then
+  if [ -n "$MESSAGE" ]; then
+    jq -n --arg msg "$MESSAGE" \
+      '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","additionalContext":$msg}}'
+  else
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
+  fi
 else
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"User rejected the proposed change in diff review. Do not retry or suggest alternatives. Stop and wait for user instructions."}}'
+  if [ -n "$MESSAGE" ]; then
+    jq -n --arg msg "$MESSAGE" \
+      '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":("User rejected the proposed change in diff review. Reason: " + $msg + " Do not retry or suggest alternatives. Stop and wait for user instructions.")}}'
+  else
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"User rejected the proposed change in diff review. Do not retry or suggest alternatives. Stop and wait for user instructions."}}'
+  fi
 fi

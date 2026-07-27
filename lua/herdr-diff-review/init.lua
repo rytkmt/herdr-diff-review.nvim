@@ -42,12 +42,15 @@ function M.open_diff(original, modified, result_file, file_path)
   end
 end
 
-function M._write_result(decision)
+function M._write_result(decision, message)
   if not state.active then return end
 
   local f = io.open(state.result_file, "w")
   if f then
     f:write(decision)
+    if message and message ~= "" then
+      f:write("\n" .. message)
+    end
     f:close()
   end
 
@@ -71,13 +74,13 @@ function M._close_buffers()
 end
 
 function M._register_commands()
-  vim.api.nvim_create_user_command("HerdrDiffReviewAccept", function()
-    M._write_result("accept")
-  end, { desc = "Accept the proposed change" })
+  vim.api.nvim_create_user_command("HerdrDiffReviewAccept", function(opts)
+    M._write_result("accept", opts.args)
+  end, { nargs = "?", desc = "Accept the proposed change" })
 
-  vim.api.nvim_create_user_command("HerdrDiffReviewDeny", function()
-    M._write_result("deny")
-  end, { desc = "Deny the proposed change" })
+  vim.api.nvim_create_user_command("HerdrDiffReviewDeny", function(opts)
+    M._write_result("deny", opts.args)
+  end, { nargs = "?", desc = "Deny the proposed change" })
 end
 
 function M._unregister_commands()
