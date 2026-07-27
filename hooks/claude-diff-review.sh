@@ -97,6 +97,7 @@ if [ ! -f "$STATE_FILE" ]; then
 fi
 
 PANE_ID="$HERDR_PANE_ID"
+WORKSPACE_ID=$(herdr pane get "$PANE_ID" 2>/dev/null | jq -r '.result.pane.workspace_id // empty' || true)
 SOCK_PATH="/tmp/herdr-diff-review-${PANE_ID//:/--}.sock"
 
 # 現在のtab_idを保存（後で戻す用）
@@ -121,7 +122,11 @@ else
   # nvim未起動 or タブ消失: 新規作成
   rm -f "$SOCK_PATH"
 
-  TAB_RESULT=$(herdr tab create --label "diff-review" --no-focus 2>/dev/null)
+  TAB_CREATE_ARGS=(--label "diff-review" --no-focus)
+  if [ -n "$WORKSPACE_ID" ]; then
+    TAB_CREATE_ARGS+=(--workspace "$WORKSPACE_ID")
+  fi
+  TAB_RESULT=$(herdr tab create "${TAB_CREATE_ARGS[@]}" 2>/dev/null)
   DIFF_TAB_ID=$(echo "$TAB_RESULT" | jq -r '.result.tab.tab_id // empty')
   DIFF_PANE_ID=$(echo "$TAB_RESULT" | jq -r '.result.root_pane.pane_id // empty')
 
