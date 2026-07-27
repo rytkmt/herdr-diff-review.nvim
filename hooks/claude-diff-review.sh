@@ -178,7 +178,7 @@ while [ ! -f "$RESULT_FILE" ]; do
   if [ "$(awk "BEGIN {print ($ELAPSED >= $TIMEOUT) ? 1 : 0}")" -eq 1 ]; then
     # タイムアウト: nvimバッファをクリーンアップしてdeny
     nvim --server "$SOCK_PATH" --remote-expr \
-      'luaeval("require(\"diff-review\")._close_buffers()")' >/dev/null 2>&1
+      'luaeval("require(\"herdr-diff-review\")._close_buffers()")' >/dev/null 2>&1
     herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Diff review timed out. Do not retry or suggest alternatives. Stop and wait for user instructions."}}'
     exit 0

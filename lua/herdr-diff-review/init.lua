@@ -32,7 +32,14 @@ function M.open_diff(original, modified, result_file, file_path)
   vim.bo[state.modified_buf].bufhidden = "wipe"
 
   M._register_commands()
-  M._set_keymaps()
+
+  if M._setup_done then
+    M._set_keymaps()
+  else
+    vim.defer_fn(function()
+      M._set_keymaps()
+    end, 100)
+  end
 end
 
 function M._write_result(decision)
@@ -94,6 +101,11 @@ end
 
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
+  M._setup_done = true
+
+  if state.active then
+    M._set_keymaps()
+  end
 end
 
 return M
