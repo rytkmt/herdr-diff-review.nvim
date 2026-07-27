@@ -100,7 +100,7 @@ PANE_ID="$HERDR_PANE_ID"
 SOCK_PATH="/tmp/herdr-diff-review-${PANE_ID//:/--}.sock"
 
 # 現在のtab_idを保存（後で戻す用）
-CURRENT_TAB_ID=$(herdr pane current 2>/dev/null | jq -r '.result.pane.tab_id // empty')
+CURRENT_TAB_ID=$(herdr pane current 2>/dev/null | jq -r '.result.pane.tab_id // empty' 2>/dev/null || true)
 
 nvim_alive() {
   nvim --server "$SOCK_PATH" --remote-expr 'luaeval("pcall(require, \"herdr-diff-review\")")' 2>/dev/null | grep -q "true"
@@ -162,12 +162,15 @@ MOD_ESC=$(escape_lua_str "$MODIFIED")
 RESULT_ESC=$(escape_lua_str "$RESULT_FILE")
 FPATH_ESC=$(escape_lua_str "$FILE_PATH")
 
-nvim --server "$SOCK_PATH" --remote-expr \
+if ! nvim --server "$SOCK_PATH" --remote-expr \
   "luaeval(\"require('herdr-diff-review').open_diff('${ORIG_ESC}', '${MOD_ESC}', '${RESULT_ESC}', '${FPATH_ESC}')\")" \
-  >/dev/null 2>&1
+  >/dev/null 2>&1; then
+  echo "herdr-diff-review: failed to send diff to nvim, allowing tool execution" >&2
+  exit 0
+fi
 
 # diffタブにフォーカス
-herdr tab focus "$DIFF_TAB_ID" >/dev/null 2>&1
+herdr tab focus "$DIFF_TAB_ID" >/dev/null 2>&1 || true
 
 # --- result_file をpoll ---
 
@@ -178,8 +181,8 @@ while [ ! -f "$RESULT_FILE" ]; do
   if [ "$(awk "BEGIN {print ($ELAPSED >= $TIMEOUT) ? 1 : 0}")" -eq 1 ]; then
     # タイムアウト: nvimバッファをクリーンアップしてdeny
     nvim --server "$SOCK_PATH" --remote-expr \
-      'luaeval("require(\"herdr-diff-review\")._close_buffers()")' >/dev/null 2>&1
-    herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1
+      'luaeval("require(\"herdr-diff-review\")._close_buffers()")' >/dev/null 2>&1 || true
+    herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Diff review timed out. Do not retry or suggest alternatives. Stop and wait for user instructions."}}'
     exit 0
   fi
@@ -187,8 +190,8 @@ done
 
 RESULT=$(cat "$RESULT_FILE")
 
-# 元のタブに戻す
-herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1
+# 元のタブに戻す（失敗してもresult出力をブロックしない）
+herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
 
 # --- 結果出力 ---
 
