@@ -97,6 +97,8 @@ diffが表示されたら:
     keymaps = {
       accept = "<leader>da",
       deny = "<leader>dd",
+      accept_with_message = "<leader>dA",
+      deny_with_message = "<leader>dD",
     },
   },
 }

@@ -98,6 +98,26 @@ function M._set_keymaps()
       if config.keymaps.deny then
         vim.keymap.set("n", config.keymaps.deny, "<cmd>HerdrDiffReviewDeny<cr>", { buffer = buf })
       end
+      if config.keymaps.accept_with_message then
+        vim.keymap.set("n", config.keymaps.accept_with_message, function()
+          local msg = vim.fn.input("Accept message: ")
+          if msg ~= "" then
+            vim.cmd("HerdrDiffReviewAccept " .. msg)
+          else
+            vim.cmd("HerdrDiffReviewAccept")
+          end
+        end, { buffer = buf })
+      end
+      if config.keymaps.deny_with_message then
+        vim.keymap.set("n", config.keymaps.deny_with_message, function()
+          local msg = vim.fn.input("Deny reason: ")
+          if msg ~= "" then
+            vim.cmd("HerdrDiffReviewDeny " .. msg)
+          else
+            vim.cmd("HerdrDiffReviewDeny")
+          end
+        end, { buffer = buf })
+      end
     end
   end
 end
