@@ -7,6 +7,7 @@ local config = {
 local state = {
   active = false,
   result_file = nil,
+  modified_path = nil,
   original_buf = nil,
   modified_buf = nil,
 }
@@ -16,6 +17,7 @@ function M.open_diff(original, modified, result_file, file_path)
 
   state.active = true
   state.result_file = result_file
+  state.modified_path = modified
 
   local ft = vim.filetype.match({ filename = file_path }) or ""
 
@@ -30,7 +32,6 @@ function M.open_diff(original, modified, result_file, file_path)
   vim.cmd("vertical diffsplit " .. vim.fn.fnameescape(modified))
   state.modified_buf = vim.api.nvim_get_current_buf()
   vim.api.nvim_buf_set_name(state.modified_buf, file_path .. " [modified]")
-  vim.bo[state.modified_buf].modifiable = false
   vim.bo[state.modified_buf].buftype = "nofile"
   vim.bo[state.modified_buf].bufhidden = "wipe"
   vim.bo[state.modified_buf].filetype = ft
@@ -48,6 +49,24 @@ end
 
 function M._write_result(decision, message)
   if not state.active then return end
+
+  if decision == "accept" and state.modified_buf and vim.api.nvim_buf_is_valid(state.modified_buf) then
+    local buf_lines = vim.api.nvim_buf_get_lines(state.modified_buf, 0, -1, false)
+    local buf_content = table.concat(buf_lines, "\n") .. "\n"
+
+    local f = io.open(state.modified_path, "r")
+    local orig_content = f and f:read("*a") or ""
+    if f then f:close() end
+
+    if buf_content ~= orig_content then
+      local wf = io.open(state.modified_path, "w")
+      if wf then
+        wf:write(buf_content)
+        wf:close()
+      end
+      decision = "accept_edited"
+    end
+  end
 
   local f = io.open(state.result_file, "w")
   if f then
@@ -67,6 +86,7 @@ function M._close_buffers()
   state.modified_buf = nil
   state.active = false
   state.result_file = nil
+  state.modified_path = nil
 
   for _, buf in ipairs(bufs) do
     if buf and vim.api.nvim_buf_is_valid(buf) then

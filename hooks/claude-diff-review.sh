@@ -208,6 +208,14 @@ if [ "$DECISION" = "accept" ]; then
   else
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
   fi
+elif [ "$DECISION" = "accept_edited" ]; then
+  cp "$MODIFIED" "$FILE_PATH"
+  REASON="User applied a modified version of the change directly. The file has been updated. Continue without retrying this edit."
+  if [ -n "$MESSAGE" ]; then
+    REASON="$REASON (User note: $MESSAGE)"
+  fi
+  jq -n --arg msg "$REASON" \
+    '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$msg}}'
 else
   if [ -n "$MESSAGE" ]; then
     jq -n --arg msg "$MESSAGE" \
