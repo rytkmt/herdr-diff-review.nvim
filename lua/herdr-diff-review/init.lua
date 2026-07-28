@@ -17,12 +17,15 @@ function M.open_diff(original, modified, result_file, file_path)
   state.active = true
   state.result_file = result_file
 
+  local ft = vim.filetype.match({ filename = file_path }) or ""
+
   vim.cmd("edit " .. vim.fn.fnameescape(original))
   state.original_buf = vim.api.nvim_get_current_buf()
   vim.api.nvim_buf_set_name(state.original_buf, file_path .. " [original]")
   vim.bo[state.original_buf].modifiable = false
   vim.bo[state.original_buf].buftype = "nofile"
   vim.bo[state.original_buf].bufhidden = "wipe"
+  vim.bo[state.original_buf].filetype = ft
 
   vim.cmd("vertical diffsplit " .. vim.fn.fnameescape(modified))
   state.modified_buf = vim.api.nvim_get_current_buf()
@@ -30,6 +33,7 @@ function M.open_diff(original, modified, result_file, file_path)
   vim.bo[state.modified_buf].modifiable = false
   vim.bo[state.modified_buf].buftype = "nofile"
   vim.bo[state.modified_buf].bufhidden = "wipe"
+  vim.bo[state.modified_buf].filetype = ft
 
   M._register_commands()
 
