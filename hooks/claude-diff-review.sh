@@ -119,18 +119,28 @@ if [ -n "$DIFF_PANE_ID" ] && nvim_alive; then
   # nvim常駐中: リモートでdiff表示
   :
 else
-  # nvim未起動 or タブ消失: 新規作成
+  # nvim未起動 or タブ消失: 既存ペイン再利用 or 新規作成
   rm -f "$SOCK_PATH"
 
-  TAB_CREATE_ARGS=(--label "diff-review" --no-focus)
-  if [ -n "$WORKSPACE_ID" ]; then
-    TAB_CREATE_ARGS+=(--workspace "$WORKSPACE_ID")
+  # 既存ペインがまだ有効か確認
+  PANE_VALID=false
+  if [ -n "$DIFF_PANE_ID" ]; then
+    if herdr pane get "$DIFF_PANE_ID" >/dev/null 2>&1; then
+      PANE_VALID=true
+    fi
   fi
-  TAB_RESULT=$(herdr tab create "${TAB_CREATE_ARGS[@]}" 2>/dev/null)
-  DIFF_TAB_ID=$(echo "$TAB_RESULT" | jq -r '.result.tab.tab_id // empty')
-  DIFF_PANE_ID=$(echo "$TAB_RESULT" | jq -r '.result.root_pane.pane_id // empty')
 
-  # nvim起動
+  if [ "$PANE_VALID" = "false" ]; then
+    TAB_CREATE_ARGS=(--label "diff-review" --no-focus)
+    if [ -n "$WORKSPACE_ID" ]; then
+      TAB_CREATE_ARGS+=(--workspace "$WORKSPACE_ID")
+    fi
+    TAB_RESULT=$(herdr tab create "${TAB_CREATE_ARGS[@]}" 2>/dev/null)
+    DIFF_TAB_ID=$(echo "$TAB_RESULT" | jq -r '.result.tab.tab_id // empty')
+    DIFF_PANE_ID=$(echo "$TAB_RESULT" | jq -r '.result.root_pane.pane_id // empty')
+  fi
+
+  # nvim起動（既存ペイン再利用 or 新規ペイン）
   herdr pane run "$DIFF_PANE_ID" "bash $PLUGIN_DIR/scripts/start-nvim.sh $SOCK_PATH" >/dev/null 2>&1
 
   # nvim起動待ち
