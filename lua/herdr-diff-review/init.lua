@@ -28,13 +28,18 @@ function M.open_diff(original, modified, result_file, file_path)
   vim.bo[state.original_buf].buftype = "nofile"
   vim.bo[state.original_buf].bufhidden = "wipe"
   vim.bo[state.original_buf].filetype = ft
+  vim.cmd("diffthis")
 
-  vim.cmd("vertical diffsplit " .. vim.fn.fnameescape(modified))
-  state.modified_buf = vim.api.nvim_get_current_buf()
-  vim.api.nvim_buf_set_name(state.modified_buf, file_path .. " [modified]")
+  vim.cmd("vertical split")
+  state.modified_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_win_set_buf(0, state.modified_buf)
   vim.bo[state.modified_buf].buftype = "nofile"
   vim.bo[state.modified_buf].bufhidden = "wipe"
+  local modified_lines = vim.fn.readfile(modified)
+  vim.api.nvim_buf_set_lines(state.modified_buf, 0, -1, false, modified_lines)
+  vim.api.nvim_buf_set_name(state.modified_buf, file_path .. " [modified]")
   vim.bo[state.modified_buf].filetype = ft
+  vim.cmd("diffthis")
 
   M._register_commands()
 
@@ -52,16 +57,22 @@ function M._write_result(decision, message)
 
   if decision == "accept" and state.modified_buf and vim.api.nvim_buf_is_valid(state.modified_buf) then
     local buf_lines = vim.api.nvim_buf_get_lines(state.modified_buf, 0, -1, false)
-    local buf_content = table.concat(buf_lines, "\n") .. "\n"
+    local orig_lines = vim.fn.readfile(state.modified_path)
 
-    local f = io.open(state.modified_path, "r")
-    local orig_content = f and f:read("*a") or ""
-    if f then f:close() end
+    local changed = #buf_lines ~= #orig_lines
+    if not changed then
+      for i, line in ipairs(buf_lines) do
+        if line ~= orig_lines[i] then
+          changed = true
+          break
+        end
+      end
+    end
 
-    if buf_content ~= orig_content then
+    if changed then
       local wf = io.open(state.modified_path, "w")
       if wf then
-        wf:write(buf_content)
+        wf:write(table.concat(buf_lines, "\n") .. "\n")
         wf:close()
       end
       decision = "accept_edited"
