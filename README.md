@@ -37,14 +37,16 @@ Neovimはレビュー間で常駐し続ける。バッファだけが差し替�
 
 ### 1. リポジトリのクローン
 
+任意の場所にクローン:
+
 ```sh
-git clone https://github.com/rytkmt/herdr-diff-review.nvim.git ~/.local/share/herdr-diff-review.nvim
+git clone https://github.com/rytkmt/herdr-diff-review.nvim.git ~/path/to/herdr-diff-review.nvim
 ```
 
 ### 2. Herdrプラグインの登録
 
 ```sh
-herdr plugin link ~/.local/share/herdr-diff-review.nvim
+herdr plugin link ~/path/to/herdr-diff-review.nvim
 ```
 
 ### 3. Neovimプラグインの追加
@@ -69,14 +71,14 @@ lazy.nvim:
   "hooks": [
     {
       "type": "command",
-      "command": "bash ~/.local/share/herdr-diff-review.nvim/hooks/claude-diff-review.sh",
-      "timeout": 300
+      "command": "bash ~/path/to/herdr-diff-review.nvim/hooks/claude-diff-review.sh",
+      "timeout": 1900
     }
   ]
 }
 ```
 
-`timeout` はNeovimでの操作待ち最大秒数（デフォルト300秒 = 5分）。
+`timeout` はフックの最大待ち秒数。`DIFF_REVIEW_TIMEOUT`（デフォルト1800秒）より大きい値を設定すること。スクリプト側のタイムアウトが先に発動してクリーンアップを行うため、フック側が先にkillされるとバッファが残ったままになる。
 
 ## 使い方
 
@@ -110,7 +112,7 @@ diffが表示されたら:
 
 | 変数 | デフォルト | 説明 |
 |------|-----------|------|
-| `DIFF_REVIEW_TIMEOUT` | 300 | 操作待ち最大秒数 |
+| `DIFF_REVIEW_TIMEOUT` | 1800 | 操作待ち最大秒数。AIエージェント側のフックtimeoutより短い値にすること |
 | `DIFF_REVIEW_POLL_INTERVAL` | 0.5 | 結果確認の間隔（秒） |
 
 ## 動作の詳細

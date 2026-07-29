@@ -4,7 +4,7 @@ set -euo pipefail
 STATE_DIR="$HOME/.local/state/herdr-diff-review"
 STATE_FILE="$STATE_DIR/state.json"
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TIMEOUT="${DIFF_REVIEW_TIMEOUT:-300}"
+TIMEOUT="${DIFF_REVIEW_TIMEOUT:-1800}"
 POLL_INTERVAL="${DIFF_REVIEW_POLL_INTERVAL:-0.5}"
 
 # --- Early exits ---
