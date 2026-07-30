@@ -13,8 +13,6 @@ local state = {
 }
 
 function M.open_diff(original, modified, result_file, file_path)
-  M._close_buffers()
-
   state.active = true
   state.result_file = result_file
   state.modified_path = modified
@@ -40,6 +38,13 @@ function M.open_diff(original, modified, result_file, file_path)
   vim.api.nvim_buf_set_name(state.modified_buf, file_path .. " [modified]")
   vim.bo[state.modified_buf].filetype = ft
   vim.cmd("diffthis")
+
+  vim.api.nvim_create_autocmd("BufWriteCmd", {
+    buffer = state.modified_buf,
+    callback = function()
+      M._write_result("accept")
+    end,
+  })
 
   M._register_commands()
 
@@ -88,24 +93,8 @@ function M._write_result(decision, message)
     f:close()
   end
 
-  M._close_buffers()
-end
-
-function M._close_buffers()
-  local bufs = { state.original_buf, state.modified_buf }
-  state.original_buf = nil
-  state.modified_buf = nil
   state.active = false
-  state.result_file = nil
-  state.modified_path = nil
-
-  for _, buf in ipairs(bufs) do
-    if buf and vim.api.nvim_buf_is_valid(buf) then
-      vim.api.nvim_buf_delete(buf, { force = true })
-    end
-  end
-
-  M._unregister_commands()
+  vim.cmd("qa!")
 end
 
 function M._register_commands()
@@ -116,11 +105,6 @@ function M._register_commands()
   vim.api.nvim_create_user_command("HerdrDiffReviewDeny", function(opts)
     M._write_result("deny", opts.args)
   end, { nargs = "?", desc = "Deny the proposed change" })
-end
-
-function M._unregister_commands()
-  pcall(vim.api.nvim_del_user_command, "HerdrDiffReviewAccept")
-  pcall(vim.api.nvim_del_user_command, "HerdrDiffReviewDeny")
 end
 
 function M._set_keymaps()

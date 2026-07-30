@@ -2,7 +2,7 @@
 
 AIエージェントのファイル変更を、適用前にNeovimのdiffモードで確認・承認/拒否できるようにするプラグイン。
 
-Claude Code（またはPreToolUseフック対応の任意のエージェント）がファイルを編集しようとすると、Herdrの専用タブにNeovimでdiffが表示される。コマンド1つで承認/拒否を選択すると、自動でエージェントのタブにフォーカスが戻る。
+Claude Code（またはPreToolUseフック対応の任意のエージェント）がファイルを編集しようとすると、Herdrにdiffが表示される。コマンド1つで承認/拒否を選択すると、自動でエージェントのタブにフォーカスが戻る。
 
 ## 仕組み
 
@@ -13,18 +13,16 @@ Claude Code（またはPreToolUseフック対応の任意のエージェント�
 PreToolUse フックがインターセプト
         │
         ├─ 変更前/変更後のtempファイルを作成
-        ├─ Herdrの "diff-review" タブを開く（または再利用）
-        ├─ 常駐Neovimにdiffバッファを送り込む（--server / --remote-expr）
+        ├─ 表示モードに応じてタブまたはペインを作成
+        ├─ Neovimを起動しdiffを表示
         ├─ ユーザーの操作を待機
         │
         ▼
 :HerdrDiffReviewAccept または :HerdrDiffReviewDeny を実行
         │
         ▼
-フックがallow/denyをエージェントに返し、フォーカスがエージェントタブに戻る
+フックがallow/denyをエージェントに返し、タブ/ペインを閉じる
 ```
-
-Neovimはレビュー間で常駐し続ける。バッファだけが差し替わる。
 
 ## 必要環境
 
@@ -78,7 +76,7 @@ lazy.nvim:
 }
 ```
 
-`timeout` はフックの最大待ち秒数。`DIFF_REVIEW_TIMEOUT`（デフォルト1800秒）より大きい値を設定すること。スクリプト側のタイムアウトが先に発動してクリーンアップを行うため、フック側が先にkillされるとバッファが残ったままになる。
+`timeout` はフックの最大待ち秒数。`DIFF_REVIEW_TIMEOUT`（デフォルト1800秒）より大きい値を設定すること。スクリプト側のタイムアウトが先に発動してクリーンアップを行うため、フック側が先にkillされるとペインが残ったままになる。
 
 ## 使い方
 
@@ -89,7 +87,9 @@ diffが表示されたら:
 | `:HerdrDiffReviewAccept` | 変更を承認 |
 | `:HerdrDiffReviewDeny` | 変更を拒否 |
 
-これらのコマンドはdiff確認中のみ有効。キーマップはsetupで設定可能（diff表示中のバッファにのみ適用される）:
+modified側のバッファは編集可能。変更してからAcceptすると、編集後の内容がファイルに反映される。modified側で`:w`を実行してもAcceptとして扱われる。
+
+キーマップはsetupで設定可能（diff表示中のバッファにのみ適用される）:
 
 ```lua
 {
@@ -112,14 +112,19 @@ diffが表示されたら:
 
 | 変数 | デフォルト | 説明 |
 |------|-----------|------|
+| `DIFF_REVIEW_MODE` | tab | 表示モード: `tab` / `vertical_split` / `horizontal_split` |
 | `DIFF_REVIEW_TIMEOUT` | 1800 | 操作待ち最大秒数。AIエージェント側のフックtimeoutより短い値にすること |
 | `DIFF_REVIEW_POLL_INTERVAL` | 0.5 | 結果確認の間隔（秒） |
 
+### 表示モード
+
+- **tab** (デフォルト): 新しいHerdrタブを作成してdiffを表示。画面全体を使えるため差分が大きいときに見やすい
+- **vertical_split**: 現在のペインを横に分割してdiffを表示
+- **horizontal_split**: 現在のペインを縦に分割してdiffを表示
+
 ## 動作の詳細
 
-- **初回呼び出し**: "diff-review" ラベルのHerdrタブを作成し、`--listen`付きでNeovimを起動
-- **2回目以降**: ソケット経由で同じNeovimを再利用。バッファだけ差し替え
-- **Neovimが死んだ場合**: 次のdiff時にタブとNeovimを自動再作成
+- **レビューごとにNeovimを起動**: 毎回新しいNeovimインスタンスでdiffを表示し、操作完了後にタブ/ペインごと閉じる
 - **Herdr外** (`HERDR_ENV`未設定): フックは何もせず通過。エージェントは通常動作
 - **サブエージェント**: `agent_id`で検知し、レビューなしで自動許可
 - **タイムアウト**: deny扱い
@@ -131,9 +136,7 @@ herdr-diff-review.nvim/
 ├── herdr-plugin.toml            Herdrプラグインマニフェスト
 ├── hooks/
 │   └── claude-diff-review.sh    PreToolUseフック（メインロジック）
-├── lua/
-│   └── herdr-diff-review/
-│       └── init.lua             Neovimプラグイン（diff表示 + コマンド）
-└── scripts/
-    └── start-nvim.sh            常駐Neovim起動スクリプト
+└── lua/
+    └── herdr-diff-review/
+        └── init.lua             Neovimプラグイン（diff表示 + コマンド）
 ```

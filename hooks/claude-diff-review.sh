@@ -1,15 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-STATE_DIR="$HOME/.local/state/herdr-diff-review"
-STATE_FILE="$STATE_DIR/state.json"
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TIMEOUT="${DIFF_REVIEW_TIMEOUT:-1800}"
 POLL_INTERVAL="${DIFF_REVIEW_POLL_INTERVAL:-0.5}"
+MODE="${DIFF_REVIEW_MODE:-tab}"
 
 # --- Early exits ---
 
-# herdr外では無効
 if [ "${HERDR_ENV:-}" != "1" ]; then
   exit 0
 fi
@@ -18,18 +16,15 @@ if [ -z "${HERDR_PANE_ID:-}" ]; then
   exit 0
 fi
 
-# stdin読み取り
 INPUT=$(cat)
 
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // empty')
 
-# Edit/Write以外はpass-through
 if [ "$TOOL_NAME" != "Edit" ] && [ "$TOOL_NAME" != "Write" ]; then
   exit 0
 fi
 
-# subagentはスキップ
 if [ -n "$AGENT_ID" ]; then
   exit 0
 fi
@@ -88,49 +83,17 @@ elif [ "$TOOL_NAME" = "Write" ]; then
   echo "$INPUT" | jq -r '.tool_input.content // empty' > "$MODIFIED"
 fi
 
-# --- nvim常駐管理 ---
-
-mkdir -p "$STATE_DIR"
-LOCK_FILE="$STATE_DIR/state.lock"
-if [ ! -f "$STATE_FILE" ]; then
-  echo '{}' > "$STATE_FILE"
-fi
+# --- ペイン作成 ---
 
 PANE_ID="$HERDR_PANE_ID"
 WORKSPACE_ID=$(herdr pane get "$PANE_ID" 2>/dev/null | jq -r '.result.pane.workspace_id // empty' || true)
-SOCK_PATH="/tmp/herdr-diff-review-${PANE_ID//:/--}.sock"
-
-# 現在のtab_idを保存（後で戻す用）
 CURRENT_TAB_ID=$(herdr pane current 2>/dev/null | jq -r '.result.pane.tab_id // empty' 2>/dev/null || true)
 
-nvim_alive() {
-  nvim --server "$SOCK_PATH" --remote-expr 'luaeval("pcall(require, \"herdr-diff-review\")")' 2>/dev/null | grep -q "true"
-}
+DIFF_PANE_ID=""
+DIFF_TAB_ID=""
 
-# state.jsonからdiffタブ情報取得（flock排他制御）
-exec 9>"$LOCK_FILE"
-flock 9
-
-DIFF_TAB_ID=$(jq -r ".[\"$PANE_ID\"].tab_id // empty" "$STATE_FILE")
-DIFF_PANE_ID=$(jq -r ".[\"$PANE_ID\"].pane_id // empty" "$STATE_FILE")
-
-# nvim常駐確認
-if [ -n "$DIFF_PANE_ID" ] && nvim_alive; then
-  # nvim常駐中: リモートでdiff表示
-  :
-else
-  # nvim未起動 or タブ消失: 既存ペイン再利用 or 新規作成
-  rm -f "$SOCK_PATH"
-
-  # 既存ペインがまだ有効か確認
-  PANE_VALID=false
-  if [ -n "$DIFF_PANE_ID" ]; then
-    if herdr pane get "$DIFF_PANE_ID" >/dev/null 2>&1; then
-      PANE_VALID=true
-    fi
-  fi
-
-  if [ "$PANE_VALID" = "false" ]; then
+case "$MODE" in
+  tab)
     TAB_CREATE_ARGS=(--label "diff-review" --no-focus)
     if [ -n "$WORKSPACE_ID" ]; then
       TAB_CREATE_ARGS+=(--workspace "$WORKSPACE_ID")
@@ -138,36 +101,28 @@ else
     TAB_RESULT=$(herdr tab create "${TAB_CREATE_ARGS[@]}" 2>/dev/null)
     DIFF_TAB_ID=$(echo "$TAB_RESULT" | jq -r '.result.tab.tab_id // empty')
     DIFF_PANE_ID=$(echo "$TAB_RESULT" | jq -r '.result.root_pane.pane_id // empty')
-  fi
-
-  # nvim起動（既存ペイン再利用 or 新規ペイン）
-  herdr pane run "$DIFF_PANE_ID" "bash $PLUGIN_DIR/scripts/start-nvim.sh $SOCK_PATH" >/dev/null 2>&1
-
-  # nvim起動待ち
-  for i in $(seq 1 20); do
-    if nvim_alive; then
-      break
-    fi
-    sleep 0.5
-  done
-
-  if ! nvim_alive; then
-    flock -u 9
-    echo "herdr-diff-review: nvim failed to start, allowing tool execution" >&2
+    ;;
+  vertical_split)
+    SPLIT_RESULT=$(herdr pane split --current --direction right --no-focus 2>/dev/null)
+    DIFF_PANE_ID=$(echo "$SPLIT_RESULT" | jq -r '.result.pane.pane_id // empty')
+    ;;
+  horizontal_split)
+    SPLIT_RESULT=$(herdr pane split --current --direction down --no-focus 2>/dev/null)
+    DIFF_PANE_ID=$(echo "$SPLIT_RESULT" | jq -r '.result.pane.pane_id // empty')
+    ;;
+  *)
+    echo "herdr-diff-review: unknown DIFF_REVIEW_MODE: $MODE" >&2
     exit 0
-  fi
+    ;;
+esac
 
-  # state.json更新
-  jq --arg pane "$PANE_ID" --arg tab "$DIFF_TAB_ID" --arg dpane "$DIFF_PANE_ID" --arg sock "$SOCK_PATH" \
-    '.[$pane] = {"tab_id": $tab, "pane_id": $dpane, "socket_path": $sock}' "$STATE_FILE" > "$STATE_FILE.tmp" \
-    && mv "$STATE_FILE.tmp" "$STATE_FILE"
+if [ -z "$DIFF_PANE_ID" ]; then
+  echo "herdr-diff-review: failed to create pane, allowing tool execution" >&2
+  exit 0
 fi
 
-flock -u 9
+# --- nvim起動 ---
 
-# --- nvimにdiff表示を指示 ---
-
-# Luaの文字列エスケープ（\, ', 改行, CR, タブ, ヌル文字を処理）
 escape_lua_str() {
   printf '%s' "$1" | sed -e "s/\\\\/\\\\\\\\/g" -e "s/'/\\\\'/g" -e ':a' -e 'N' -e '$!ba' -e "s/\n/\\\\n/g" | tr -d '\000\r'
 }
@@ -177,15 +132,14 @@ MOD_ESC=$(escape_lua_str "$MODIFIED")
 RESULT_ESC=$(escape_lua_str "$RESULT_FILE")
 FPATH_ESC=$(escape_lua_str "$FILE_PATH")
 
-if ! nvim --server "$SOCK_PATH" --remote-expr \
-  "luaeval(\"require('herdr-diff-review').open_diff('${ORIG_ESC}', '${MOD_ESC}', '${RESULT_ESC}', '${FPATH_ESC}')\")" \
-  >/dev/null 2>&1; then
-  echo "herdr-diff-review: failed to send diff to nvim, allowing tool execution" >&2
-  exit 0
-fi
+NVIM_CMD="nvim --cmd \"lua package.path = '${PLUGIN_DIR}/lua/?.lua;${PLUGIN_DIR}/lua/?/init.lua;' .. package.path\" -c \"lua require('herdr-diff-review').open_diff('${ORIG_ESC}', '${MOD_ESC}', '${RESULT_ESC}', '${FPATH_ESC}')\""
 
-# diffタブにフォーカス
-herdr tab focus "$DIFF_TAB_ID" >/dev/null 2>&1 || true
+herdr pane run "$DIFF_PANE_ID" "$NVIM_CMD" >/dev/null 2>&1
+
+# tabモードはフォーカスをdiffタブに移動
+if [ "$MODE" = "tab" ] && [ -n "$DIFF_TAB_ID" ]; then
+  herdr tab focus "$DIFF_TAB_ID" >/dev/null 2>&1 || true
+fi
 
 # --- result_file をpoll ---
 
@@ -194,10 +148,15 @@ while [ ! -f "$RESULT_FILE" ]; do
   sleep "$POLL_INTERVAL"
   ELAPSED=$(awk "BEGIN {print $ELAPSED + $POLL_INTERVAL}")
   if [ "$(awk "BEGIN {print ($ELAPSED >= $TIMEOUT) ? 1 : 0}")" -eq 1 ]; then
-    # タイムアウト: nvimバッファをクリーンアップしてdeny
-    nvim --server "$SOCK_PATH" --remote-expr \
-      'luaeval("require(\"herdr-diff-review\")._close_buffers()")' >/dev/null 2>&1 || true
-    herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
+    # タイムアウト: ペイン/タブを閉じてdeny
+    if [ "$MODE" = "tab" ] && [ -n "$DIFF_TAB_ID" ]; then
+      herdr tab close "$DIFF_TAB_ID" >/dev/null 2>&1 || true
+    else
+      herdr pane close "$DIFF_PANE_ID" >/dev/null 2>&1 || true
+    fi
+    if [ "$MODE" = "tab" ]; then
+      herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
+    fi
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Diff review timed out. Do not retry or suggest alternatives. Stop and wait for user instructions."}}'
     exit 0
   fi
@@ -206,8 +165,14 @@ done
 DECISION=$(head -n 1 "$RESULT_FILE")
 MESSAGE=$(tail -n +2 "$RESULT_FILE")
 
-# 元のタブに戻す（失敗してもresult出力をブロックしない）
-herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
+# --- ペイン/タブ閉じる ---
+
+if [ "$MODE" = "tab" ] && [ -n "$DIFF_TAB_ID" ]; then
+  herdr tab close "$DIFF_TAB_ID" >/dev/null 2>&1 || true
+  herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
+else
+  herdr pane close "$DIFF_PANE_ID" >/dev/null 2>&1 || true
+fi
 
 # --- 結果出力 ---
 
