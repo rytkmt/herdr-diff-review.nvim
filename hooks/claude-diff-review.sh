@@ -88,6 +88,7 @@ fi
 PANE_ID="$HERDR_PANE_ID"
 WORKSPACE_ID=$(herdr pane get "$PANE_ID" 2>/dev/null | jq -r '.result.pane.workspace_id // empty' || true)
 CURRENT_TAB_ID=$(herdr pane current 2>/dev/null | jq -r '.result.pane.tab_id // empty' 2>/dev/null || true)
+FOCUSED_WORKSPACE_ID=$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[] | select(.focused == true) | .workspace_id // empty' 2>/dev/null || true)
 
 DIFF_PANE_ID=""
 DIFF_TAB_ID=""
@@ -136,17 +137,32 @@ NVIM_CMD="nvim --cmd \"lua package.path = '${PLUGIN_DIR}/lua/?.lua;${PLUGIN_DIR}
 
 herdr pane run "$DIFF_PANE_ID" "$NVIM_CMD" >/dev/null 2>&1
 
-# tabモードはフォーカスをdiffタブに移動
-if [ "$MODE" = "tab" ] && [ -n "$DIFF_TAB_ID" ]; then
+# tabモードで同じワークスペースの場合のみ即座にフォーカス（別WSはポーリング内で検知）
+if [ "$MODE" = "tab" ] && [ -n "$DIFF_TAB_ID" ] && [ "$WORKSPACE_ID" = "$FOCUSED_WORKSPACE_ID" ]; then
   herdr tab focus "$DIFF_TAB_ID" >/dev/null 2>&1 || true
 fi
 
 # --- result_file をpoll ---
 
+DIFF_TAB_FOCUSED=false
+if [ "$WORKSPACE_ID" = "$FOCUSED_WORKSPACE_ID" ]; then
+  DIFF_TAB_FOCUSED=true
+fi
+
 ELAPSED=0
 while [ ! -f "$RESULT_FILE" ]; do
   sleep "$POLL_INTERVAL"
   ELAPSED=$(awk "BEGIN {print $ELAPSED + $POLL_INTERVAL}")
+
+  # 別ワークスペースの場合、そのWSにフォーカスが来たらdiffタブにフォーカス
+  if [ "$MODE" = "tab" ] && [ "$DIFF_TAB_FOCUSED" = "false" ] && [ -n "$DIFF_TAB_ID" ]; then
+    CURRENT_FOCUSED_WS=$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[] | select(.focused == true) | .workspace_id // empty' 2>/dev/null || true)
+    if [ "$CURRENT_FOCUSED_WS" = "$WORKSPACE_ID" ]; then
+      herdr tab focus "$DIFF_TAB_ID" >/dev/null 2>&1 || true
+      DIFF_TAB_FOCUSED=true
+    fi
+  fi
+
   if [ "$(awk "BEGIN {print ($ELAPSED >= $TIMEOUT) ? 1 : 0}")" -eq 1 ]; then
     # タイムアウト: ペイン/タブを閉じてdeny
     if [ "$MODE" = "tab" ] && [ -n "$DIFF_TAB_ID" ]; then
@@ -154,7 +170,7 @@ while [ ! -f "$RESULT_FILE" ]; do
     else
       herdr pane close "$DIFF_PANE_ID" >/dev/null 2>&1 || true
     fi
-    if [ "$MODE" = "tab" ]; then
+    if [ "$MODE" = "tab" ] && [ "$WORKSPACE_ID" = "$FOCUSED_WORKSPACE_ID" ]; then
       herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
     fi
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Diff review timed out. Do not retry or suggest alternatives. Stop and wait for user instructions."}}'
@@ -169,7 +185,9 @@ MESSAGE=$(tail -n +2 "$RESULT_FILE")
 
 if [ "$MODE" = "tab" ] && [ -n "$DIFF_TAB_ID" ]; then
   herdr tab close "$DIFF_TAB_ID" >/dev/null 2>&1 || true
-  herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
+  if [ "$WORKSPACE_ID" = "$FOCUSED_WORKSPACE_ID" ]; then
+    herdr tab focus "$CURRENT_TAB_ID" >/dev/null 2>&1 || true
+  fi
 else
   herdr pane close "$DIFF_PANE_ID" >/dev/null 2>&1 || true
 fi
