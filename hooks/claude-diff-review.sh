@@ -85,7 +85,8 @@ fi
 
 # --- ペイン作成 ---
 
-PANE_ID="$HERDR_PANE_ID"
+# HERDR_PANE_ID環境変数はワークスペースID再割り当て後に古くなるため、process-infoで実際のpane_idを解決する
+PANE_ID=$(herdr pane process-info --current 2>/dev/null | jq -r '.result.process_info.pane_id // empty')
 WORKSPACE_ID=$(herdr pane get "$PANE_ID" 2>/dev/null | jq -r '.result.pane.workspace_id // empty' || true)
 CURRENT_TAB_ID=$(herdr pane current 2>/dev/null | jq -r '.result.pane.tab_id // empty' 2>/dev/null || true)
 FOCUSED_WORKSPACE_ID=$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[] | select(.focused == true) | .workspace_id // empty' 2>/dev/null || true)
