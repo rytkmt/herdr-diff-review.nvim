@@ -2,7 +2,7 @@
 
 AIエージェントのファイル変更を、適用前にNeovimのdiffモードで確認・承認/拒否できるようにするプラグイン。
 
-Claude Code（またはPreToolUseフック対応の任意のエージェント）がファイルを編集しようとすると、Herdrにdiffが表示される。コマンド1つで承認/拒否を選択すると、自動でエージェントのタブにフォーカスが戻る。
+Claude CodeまたはKiro CLI（PreToolUseフック対応エージェント）がファイルを編集しようとすると、Herdrにdiffが表示される。コマンド1つで承認/拒否を選択すると、自動でエージェントのタブにフォーカスが戻る。
 
 ## 仕組み
 
@@ -59,7 +59,11 @@ lazy.nvim:
 }
 ```
 
-### 4. Claude Codeフックの設定
+### 4. エージェントのフック設定
+
+本プラグインはClaude CodeとKiro CLIの両方に対応。入力JSONの形式から自動判別するため、同じスクリプトを使用できる。
+
+#### Claude Code
 
 `~/.claude/settings.json` の `hooks.PreToolUse` に追加:
 
@@ -69,7 +73,7 @@ lazy.nvim:
   "hooks": [
     {
       "type": "command",
-      "command": "bash ~/path/to/herdr-diff-review.nvim/hooks/claude-diff-review.sh",
+      "command": "bash ~/path/to/herdr-diff-review.nvim/hooks/diff-review.sh",
       "timeout": 1900
     }
   ]
@@ -77,6 +81,32 @@ lazy.nvim:
 ```
 
 `timeout` はフックの最大待ち秒数。`DIFF_REVIEW_TIMEOUT`（デフォルト1800秒）より大きい値を設定すること。スクリプト側のタイムアウトが先に発動してクリーンアップを行うため、フック側が先にkillされるとペインが残ったままになる。
+
+#### Kiro CLI
+
+`~/.kiro/agents/kiro_default.json` を作成（全ワークスペース共通で適用される）:
+
+```json
+{
+  "name": "kiro_default",
+  "allowedTools": ["write"],
+  "hooks": {
+    "preToolUse": [
+      {
+        "matcher": "write",
+        "command": "bash ~/path/to/herdr-diff-review.nvim/hooks/diff-review.sh",
+        "timeout_ms": 1900000
+      }
+    ]
+  }
+}
+```
+
+`timeout_ms` はミリ秒単位。`DIFF_REVIEW_TIMEOUT`（デフォルト1800秒 = 1800000ms）より大きい値を設定すること。
+
+> **重要**: `allowedTools` に `write` を含める必要がある。含めない場合、preToolUseフックがallowを返した後にKiro CLI自体のパーミッション承認プロンプトが表示され、Herdr環境では正しく動作しない。`allowedTools` に含めても、preToolUseフックによるdiff reviewが承認ゲートとして機能するため安全性は維持される。
+
+> 特定のエージェントにのみ適用したい場合は、`.kiro/agents/<agent-name>.json`（ローカル）または `~/.kiro/agents/<agent-name>.json`（グローバル）の `hooks.preToolUse` に同様の設定を追加する。
 
 ## 使い方
 
@@ -127,8 +157,20 @@ modified側のバッファは編集可能。変更してからAcceptすると、
 - **レビューごとにNeovimを起動**: 毎回新しいNeovimインスタンスでdiffを表示し、操作完了後にタブ/ペインごと閉じる
 - **ワークスペース対応**: 同じワークスペースならdiffタブに即座にフォーカス。別ワークスペースの場合はフォーカスを奪わず、そのワークスペースに切り替えた時点でdiffタブにフォーカスされる
 - **Herdr外** (`HERDR_ENV`未設定): フックは何もせず通過。エージェントは通常動作
-- **サブエージェント**: `agent_id`で検知し、レビューなしで自動許可
+- **サブエージェント**: Claude Codeの場合、`agent_id`で検知しレビューなしで自動許可（Kiroではサブエージェント判定をスキップ）
 - **タイムアウト**: deny扱い
+
+## ツールごとの制限事項
+
+| 機能 | Claude Code | Kiro CLI |
+|------|:-----------:|:--------:|
+| Accept | ✓ | ✓ |
+| Deny | ✓ | ✓ |
+| Accept with message（メッセージ付き承認） | ✓ | ✗ |
+| Deny with message（メッセージ付き拒否） | ✓ | ✓ |
+| Accept edited（修正して承認） | ✓ | ✓ |
+
+Kiro CLIでは、PreToolUseフックが`exit 0`（allow）を返す際のstdoutはLLMのコンテキストに追加されない仕様のため、Accept時にメッセージを付与してもエージェントには伝わらない。Deny時のメッセージ（stderr経由）は正常にエージェントに返される。
 
 ## プロジェクト構成
 
@@ -136,7 +178,7 @@ modified側のバッファは編集可能。変更してからAcceptすると、
 herdr-diff-review.nvim/
 ├── herdr-plugin.toml            Herdrプラグインマニフェスト
 ├── hooks/
-│   └── claude-diff-review.sh    PreToolUseフック（メインロジック）
+│   └── diff-review.sh    PreToolUseフック（メインロジック）
 └── lua/
     └── herdr-diff-review/
         └── init.lua             Neovimプラグイン（diff表示 + コマンド）
