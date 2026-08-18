@@ -1,53 +1,55 @@
 # herdr-diff-review.nvim
 
-AIエージェントのファイル変更を、適用前にNeovimのdiffモードで確認・承認/拒否できるようにするプラグイン。
+A plugin that lets you review, approve, or deny AI agent file changes in Neovim diff mode before they are applied.
 
-Claude CodeまたはKiro CLI（PreToolUseフック対応エージェント）がファイルを編集しようとすると、Herdrにdiffが表示される。コマンド1つで承認/拒否を選択すると、自動でエージェントのタブにフォーカスが戻る。
+When Claude Code or Kiro CLI (any PreToolUse hook-compatible agent) attempts to edit a file, the diff is displayed in Herdr. Approve or deny with a single command, and focus automatically returns to the agent's tab.
 
-## 仕組み
+[日本語版 README](README.ja.md)
+
+## How it works
 
 ```
-エージェントが Edit/Write を実行しようとする
+Agent attempts Edit/Write
         │
         ▼
-PreToolUse フックがインターセプト
+PreToolUse hook intercepts
         │
-        ├─ 変更前/変更後のtempファイルを作成
-        ├─ 表示モードに応じてタブまたはペインを作成
-        ├─ Neovimを起動しdiffを表示
-        ├─ ユーザーの操作を待機
-        │
-        ▼
-:HerdrDiffReviewAccept または :HerdrDiffReviewDeny を実行
+        ├─ Creates before/after temp files
+        ├─ Creates a tab or pane based on display mode
+        ├─ Launches Neovim with diff view
+        ├─ Waits for user action
         │
         ▼
-フックがallow/denyをエージェントに返し、タブ/ペインを閉じる
+User runs :HerdrDiffReviewAccept or :HerdrDiffReviewDeny
+        │
+        ▼
+Hook returns allow/deny to the agent, closes tab/pane
 ```
 
-## 必要環境
+## Requirements
 
 - [Herdr](https://herdr.dev) >= 0.7.4
 - Neovim >= 0.10
 - jq
-- Claude Code（またはPreToolUseフック対応エージェント）
+- Claude Code (or any PreToolUse hook-compatible agent)
 
-## インストール
+## Installation
 
-### 1. リポジトリのクローン
+### 1. Clone the repository
 
-任意の場所にクローン:
+Clone to any location:
 
 ```sh
 git clone https://github.com/rytkmt/herdr-diff-review.nvim.git ~/path/to/herdr-diff-review.nvim
 ```
 
-### 2. Herdrプラグインの登録
+### 2. Register as a Herdr plugin
 
 ```sh
 herdr plugin link ~/path/to/herdr-diff-review.nvim
 ```
 
-### 3. Neovimプラグインの追加
+### 3. Add the Neovim plugin
 
 lazy.nvim:
 
@@ -59,13 +61,13 @@ lazy.nvim:
 }
 ```
 
-### 4. エージェントのフック設定
+### 4. Configure agent hooks
 
-本プラグインはClaude CodeとKiro CLIの両方に対応。入力JSONの形式から自動判別するため、同じスクリプトを使用できる。
+This plugin supports both Claude Code and Kiro CLI. It auto-detects the agent from the input JSON format, so the same script works for both.
 
 #### Claude Code
 
-`~/.claude/settings.json` の `hooks.PreToolUse` に追加:
+Add to `hooks.PreToolUse` in `~/.claude/settings.json`:
 
 ```json
 {
@@ -80,11 +82,11 @@ lazy.nvim:
 }
 ```
 
-`timeout` はフックの最大待ち秒数。`DIFF_REVIEW_TIMEOUT`（デフォルト1800秒）より大きい値を設定すること。スクリプト側のタイムアウトが先に発動してクリーンアップを行うため、フック側が先にkillされるとペインが残ったままになる。
+`timeout` is the maximum wait time in seconds for the hook. Set it higher than `DIFF_REVIEW_TIMEOUT` (default: 1800s). The script-side timeout fires first and handles cleanup — if the hook timeout kills the process first, panes may be left behind.
 
 #### Kiro CLI
 
-`~/.kiro/agents/kiro_default.json` を作成（全ワークスペース共通で適用される）:
+Create `~/.kiro/agents/kiro_default.json` (applies to all workspaces):
 
 ```json
 {
@@ -102,24 +104,24 @@ lazy.nvim:
 }
 ```
 
-`timeout_ms` はミリ秒単位。`DIFF_REVIEW_TIMEOUT`（デフォルト1800秒 = 1800000ms）より大きい値を設定すること。
+`timeout_ms` is in milliseconds. Set it higher than `DIFF_REVIEW_TIMEOUT` (default: 1800s = 1800000ms).
 
-> **重要**: `allowedTools` に `write` を含める必要がある。含めない場合、preToolUseフックがallowを返した後にKiro CLI自体のパーミッション承認プロンプトが表示され、Herdr環境では正しく動作しない。`allowedTools` に含めても、preToolUseフックによるdiff reviewが承認ゲートとして機能するため安全性は維持される。
+> **Important**: `allowedTools` must include `write`. Without it, Kiro CLI's own permission prompt appears after the preToolUse hook returns allow, which does not work correctly in the Herdr environment. Including `write` in `allowedTools` is still safe because the preToolUse diff review hook acts as the approval gate.
 
-> 特定のエージェントにのみ適用したい場合は、`.kiro/agents/<agent-name>.json`（ローカル）または `~/.kiro/agents/<agent-name>.json`（グローバル）の `hooks.preToolUse` に同様の設定を追加する。
+> To apply only to a specific agent, add the same hook configuration to `.kiro/agents/<agent-name>.json` (local) or `~/.kiro/agents/<agent-name>.json` (global) under `hooks.preToolUse`.
 
-## 使い方
+## Usage
 
-diffが表示されたら:
+When a diff is displayed:
 
-| コマンド | 動作 |
-|----------|------|
-| `:HerdrDiffReviewAccept` | 変更を承認 |
-| `:HerdrDiffReviewDeny` | 変更を拒否 |
+| Command | Action |
+|---------|--------|
+| `:HerdrDiffReviewAccept` | Approve the change |
+| `:HerdrDiffReviewDeny` | Reject the change |
 
-modified側のバッファは編集可能。変更してからAcceptすると、編集後の内容がファイルに反映される。modified側で`:w`を実行してもAcceptとして扱われる。
+The modified-side buffer is editable. If you make changes before accepting, the edited content is what gets written to the file. Running `:w` on the modified-side buffer also counts as Accept.
 
-キーマップはsetupで設定可能（diff表示中のバッファにのみ適用される）:
+Keymaps can be configured in setup (applied only to diff review buffers):
 
 ```lua
 {
@@ -136,50 +138,50 @@ modified側のバッファは編集可能。変更してからAcceptすると、
 }
 ```
 
-## 設定
+## Configuration
 
-環境変数（任意）:
+Environment variables (optional):
 
-| 変数 | デフォルト | 説明 |
-|------|-----------|------|
-| `DIFF_REVIEW_MODE` | tab | 表示モード: `tab` / `vertical_split` / `horizontal_split` |
-| `DIFF_REVIEW_TIMEOUT` | 1800 | 操作待ち最大秒数。AIエージェント側のフックtimeoutより短い値にすること |
-| `DIFF_REVIEW_POLL_INTERVAL` | 0.5 | 結果確認の間隔（秒） |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DIFF_REVIEW_MODE` | tab | Display mode: `tab` / `vertical_split` / `horizontal_split` |
+| `DIFF_REVIEW_TIMEOUT` | 1800 | Maximum wait time in seconds. Must be shorter than the agent's hook timeout |
+| `DIFF_REVIEW_POLL_INTERVAL` | 0.5 | Polling interval in seconds |
 
-### 表示モード
+### Display modes
 
-- **tab** (デフォルト): 新しいHerdrタブを作成してdiffを表示。画面全体を使えるため差分が大きいときに見やすい
-- **vertical_split**: 現在のペインを横に分割してdiffを表示
-- **horizontal_split**: 現在のペインを縦に分割してdiffを表示
+- **tab** (default): Creates a new Herdr tab for the diff. Uses the full screen, best for large diffs
+- **vertical_split**: Splits the current pane horizontally to show the diff
+- **horizontal_split**: Splits the current pane vertically to show the diff
 
-## 動作の詳細
+## Behavior details
 
-- **レビューごとにNeovimを起動**: 毎回新しいNeovimインスタンスでdiffを表示し、操作完了後にタブ/ペインごと閉じる
-- **ワークスペース対応**: 同じワークスペースならdiffタブに即座にフォーカス。別ワークスペースの場合はフォーカスを奪わず、そのワークスペースに切り替えた時点でdiffタブにフォーカスされる
-- **Herdr外** (`HERDR_ENV`未設定): フックは何もせず通過。エージェントは通常動作
-- **サブエージェント**: Claude Codeの場合、`agent_id`で検知しレビューなしで自動許可（Kiroではサブエージェント判定をスキップ）
-- **タイムアウト**: deny扱い
+- **Neovim per review**: Each review launches a fresh Neovim instance with the diff, and closes the tab/pane when done
+- **Workspace-aware**: If in the same workspace, the diff tab is focused immediately. If in a different workspace, focus is not stolen — the diff tab is focused when you switch to that workspace
+- **Outside Herdr** (`HERDR_ENV` not set): The hook passes through without action. The agent operates normally
+- **Sub-agents**: For Claude Code, sub-agents are detected by `agent_id` and auto-approved without review (Kiro CLI skips sub-agent detection)
+- **Timeout**: Treated as deny
 
-## ツールごとの制限事項
+## Per-tool limitations
 
-| 機能 | Claude Code | Kiro CLI |
-|------|:-----------:|:--------:|
+| Feature | Claude Code | Kiro CLI |
+|---------|:-----------:|:--------:|
 | Accept | ✓ | ✓ |
 | Deny | ✓ | ✓ |
-| Accept with message（メッセージ付き承認） | ✓ | ✗ |
-| Deny with message（メッセージ付き拒否） | ✓ | ✓ |
-| Accept edited（修正して承認） | ✓ | ✓ |
+| Accept with message | ✓ | ✗ |
+| Deny with message | ✓ | ✓ |
+| Accept edited | ✓ | ✓ |
 
-Kiro CLIでは、PreToolUseフックが`exit 0`（allow）を返す際のstdoutはLLMのコンテキストに追加されない仕様のため、Accept時にメッセージを付与してもエージェントには伝わらない。Deny時のメッセージ（stderr経由）は正常にエージェントに返される。
+In Kiro CLI, stdout from a PreToolUse hook returning `exit 0` (allow) is not added to the LLM context, so messages attached to Accept are not seen by the agent. Deny messages (via stderr) are returned to the agent normally.
 
-## プロジェクト構成
+## Project structure
 
 ```
 herdr-diff-review.nvim/
-├── herdr-plugin.toml            Herdrプラグインマニフェスト
+├── herdr-plugin.toml          Herdr plugin manifest
 ├── hooks/
-│   └── diff-review.sh    PreToolUseフック（メインロジック）
+│   └── diff-review.sh         PreToolUse hook (main logic)
 └── lua/
     └── herdr-diff-review/
-        └── init.lua             Neovimプラグイン（diff表示 + コマンド）
+        └── init.lua           Neovim plugin (diff display + commands)
 ```
