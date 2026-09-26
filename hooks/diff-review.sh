@@ -66,7 +66,37 @@ ORIGINAL="$WORK_DIR/original"
 MODIFIED="$WORK_DIR/modified"
 RESULT_FILE="$WORK_DIR/result"
 
+# --- Agent state reporting (Herdr sidebar) ---
+STATE_SOURCE="herdr-diff-review"
+if [ "$AGENT_TYPE" = "kiro" ]; then
+  STATE_AGENT="kiro"
+else
+  STATE_AGENT="claude"
+fi
+AGENT_STATE_REPORTED=false
+
+report_blocked() {
+  if [ -n "${HERDR_PANE_ID:-}" ]; then
+    herdr pane report-agent "$HERDR_PANE_ID" \
+      --source "$STATE_SOURCE" \
+      --agent "$STATE_AGENT" \
+      --state blocked \
+      --message "diff review 待ち" >/dev/null 2>&1 || true
+    AGENT_STATE_REPORTED=true
+  fi
+}
+
+release_blocked() {
+  if [ "$AGENT_STATE_REPORTED" = "true" ] && [ -n "${HERDR_PANE_ID:-}" ]; then
+    herdr pane release-agent "$HERDR_PANE_ID" \
+      --source "$STATE_SOURCE" \
+      --agent "$STATE_AGENT" >/dev/null 2>&1 || true
+    AGENT_STATE_REPORTED=false
+  fi
+}
+
 cleanup() {
+  release_blocked
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -292,6 +322,9 @@ herdr pane run "$DIFF_PANE_ID" "$NVIM_CMD" >/dev/null 2>&1
 if [ "$MODE" = "tab" ] && [ -n "$DIFF_TAB_ID" ] && [ "$WORKSPACE_ID" = "$FOCUSED_WORKSPACE_ID" ]; then
   herdr tab focus "$DIFF_TAB_ID" >/dev/null 2>&1 || true
 fi
+
+# 本体ペインをblocked表示にする（diff review 待ちの間）
+report_blocked
 
 # --- result_file をpoll ---
 
