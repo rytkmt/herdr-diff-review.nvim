@@ -144,7 +144,7 @@ PYEOF
         touch "$ORIGINAL"
       fi
 
-      echo "$INPUT" | jq -r '.tool_input.content // empty' > "$MODIFIED"
+      echo "$INPUT" | jq -rj '.tool_input.content // empty' > "$MODIFIED"
       ;;
     insert)
       if [ -f "$FILE_PATH" ]; then
@@ -226,7 +226,7 @@ PYEOF
       touch "$ORIGINAL"
     fi
 
-    echo "$INPUT" | jq -r '.tool_input.content // empty' > "$MODIFIED"
+    echo "$INPUT" | jq -rj '.tool_input.content // empty' > "$MODIFIED"
   fi
 fi
 
